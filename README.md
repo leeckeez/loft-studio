@@ -27,3 +27,7 @@ Then open http://localhost:8000. Three.js (0.165) is loaded from the jsDelivr CD
 
 - `index.html` — the whole app (HTML, CSS, JavaScript).
 - `blueprint.jpg` — the source floor plan, used in the Plan tab and as the tracer's default image.
+
+## Deploy to Render
+
+This repo includes a `render.yaml` Blueprint. In Render, choose **New → Blueprint**, connect this repository, and apply it. Render publishes the folder as a static site and redeploys on every push to `main`.

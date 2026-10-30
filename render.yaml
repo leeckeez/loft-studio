@@ -1,0 +1,12 @@
+# Render Blueprint: deploys Loft Studio as a free static site.
+services:
+  - type: web
+    name: loft-studio
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
