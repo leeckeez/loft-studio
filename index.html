@@ -369,7 +369,7 @@ for (const p of [[1.3,2.2,1.9],[1.3,3.4,6.2],[1.6,4.4,2.6]]) {
  const l = new THREE.PointLight(0xffd6a0, 0, 9, 1.6); l.position.set(...p); scene.add(l); roomLights.push(l);
 }
 
-const photo = {pt:null, mod:null, active:false, goal:400, saved:null, onChange:null};
+const photo = {pt:null, mod:null, active:false, goal:200, saved:null, onChange:null};
 RectAreaLightUniformsLib.init();
 // Realistic mode: multisampled HDR target → ambient occlusion (GTAO) → tone mapping
 const composerTarget = new THREE.WebGLRenderTarget(1, 1, {type:THREE.HalfFloatType, samples:4});
@@ -436,8 +436,8 @@ function makeTex(kind){
   g.fillStyle = gray(248); g.fillRect(0, 0, N, N);
   for (let k = 0; k < 60; k++) { const gr = g.createRadialGradient(r()*N, r()*N, 0, r()*N, r()*N, 120); g.fillStyle = gray(225, .06); g.beginPath(); g.arc(r()*N, r()*N, 40 + r()*120, 0, 7); g.fill(); }
   for (let v = 0; v < 9; v++) {
-   let x = r() * N, y = 0; g.strokeStyle = gray(150 + r() * 60, .35 + r() * .3); g.lineWidth = .6 + r() * 1.8; g.beginPath(); g.moveTo(x, y);
-   while (y < N) { x += (r() - .5) * 26 + 3; y += 6 + r() * 10; g.lineTo(x, y); } g.stroke();
+   let x = r() * N, y = 0; g.strokeStyle = gray(165 + r() * 50, .12 + r() * .16); g.lineWidth = .4 + r() * 1.1; g.beginPath(); g.moveTo(x, y);
+   while (y < N) { x += (r() - .5) * 10 + 1.5; y += 4 + r() * 6; g.lineTo(x, y); } g.stroke();
   }
   g.fillStyle = gray(205); const s = N / 2; for (let i = 0; i <= 2; i++) { g.fillRect(i * s - 1, 0, 2, N); g.fillRect(0, i * s - 1, N, 2); }
  } else if (kind === 'concrete' || kind === 'plaster') {
@@ -689,7 +689,7 @@ function buildLoft(){
  box(0.42, 0.46, 1.437, 1.45, 2.9, 4.15, FIX.led, {cast:false});
  box(0.765, 0.775, 0.012, 0.022, 2.9, 4.15, FIX.led, {cast:false});
  LEDS.push({x:0.44, y:1.43, z:3.52, len:1.25, axis:'z', face:'down', k:1}, {x:0.8, y:0.03, z:3.52, len:1.25, axis:'z', face:'down', k:.45});
- box(L + 0.001, L + 0.005, 0.9, 1.45, 2.85, 4.2, M.bath, {cast:false});
+ box(L, L + 0.015, 0.9, 1.45, 2.85, 4.2, M.bath, {cast:false});
  box(0.5, 0.505, 1.5, UNDER - 0.08, 3.52, 3.526, FIX.groove, {cast:false});
 
  // ---- mezzanine bedroom: built-in wardrobe along the left wall
@@ -1507,7 +1507,7 @@ async function startPhoto(){
   }
   photo.pt.setScene(scene, camera);
  } catch (e) { console.error(e); toast('Photo render failed on this device.'); photo.active = true; stopPhoto(); return; }
- photo.active = true;
+ photo.active = true; renderer.toneMappingExposure *= state.evening ? 1.6 : 1.25;
  photo.onChange = () => photo.pt.updateCamera(); controls.addEventListener('change', photo.onChange);
  $('#photoPanel').classList.remove('hidden'); $('#phNote').textContent = 'Light is being traced. Keep the view still — it sharpens over time. Orbiting restarts it from the new view.';
 }
