@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
 <script type="importmap">
-{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/","three/examples/jsm/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/","three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.8/build/index.module.js","three-gpu-pathtracer":"https://cdn.jsdelivr.net/npm/three-gpu-pathtracer@0.0.23/build/index.module.js"}}
 </script>
 <style>
 :root{--bg:#f2efea;--panel:#fbfaf7;--ink:#1d1c1a;--muted:#7a746b;--line:#e4dfd7;--acc:#b8572a;--acc-soft:#f4e4da;--glass:rgba(251,250,247,.86)}
@@ -77,6 +77,12 @@ select,input[type=number]{height:30px;border:1px solid var(--line);border-radius
 .hint{position:absolute;left:12px;bottom:12px;background:var(--glass);backdrop-filter:blur(8px);border-radius:9px;padding:7px 11px;color:var(--muted);font-size:11.5px;pointer-events:none}
 #selPanel{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:12px 14px;display:flex;flex-direction:column;gap:9px;min-width:300px}
 #selPanel.hidden{display:none}
+#photoPanel{position:absolute;right:12px;bottom:12px;width:300px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;z-index:3}
+#photoPanel.hidden{display:none}
+.ph-row{display:flex;justify-content:space-between;align-items:center}
+.ph-row b{font-family:'Space Grotesk',sans-serif}
+.ph-bar{height:6px;background:#ece8e2;border-radius:4px;overflow:hidden}.ph-bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+.ph-note{color:var(--muted);font-size:12px;line-height:1.4}
 .presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .preset{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 11px;text-align:left;cursor:pointer}
 .preset b{display:block;font-weight:600}.preset small{color:var(--muted)}
@@ -153,6 +159,9 @@ select,input[type=number]{height:30px;border:1px solid var(--line);border-radius
    <div id="surfaceList"></div>
    <h3>Lighting</h3>
    <div class="seg" id="lightSeg"><button data-l="day" class="on">Daylight</button><button data-l="evening">Evening</button></div>
+   <h3>Rendering quality</h3>
+   <div class="seg" id="qualSeg"><button data-q="real" class="on">Realistic</button><button data-q="fast">Fast</button></div>
+   <p class="note" style="margin-top:8px">Realistic adds soft contact shadows. Use Fast on slower computers. For a photo-like still image, use “Render photo” above the 3D view.</p>
   </div>
   <div class="pane" id="pane-furniture">
    <h3>Place on</h3>
@@ -189,12 +198,13 @@ select,input[type=number]{height:30px;border:1px solid var(--line);border-radius
   <div class="topbar">
    <div class="chip" id="viewChip"><span class="lbl">Level</span><button data-v="all" class="on">Whole loft</button><button data-v="ground">Ground</button><button data-v="upper">Mezzanine</button></div>
    <div class="chip" id="camChip"><span class="lbl">View</span><button data-c="iso">3D</button><button data-c="top">Top</button><button data-c="front">Window</button><button data-c="inside">Entry</button></div>
-   <div class="chip"><button id="cutBtn" class="on" title="Hide walls between you and the room">Cutaway walls</button><button id="ceilBtn" title="Show the roof slab">Ceiling</button><button id="mirrorBtn" title="Flip the layout left ↔ right">⇄ Mirror</button></div>
+   <div class="chip"><button id="cutBtn" class="on" title="Hide walls between you and the room">Cutaway walls</button><button id="ceilBtn" title="Show the roof slab">Ceiling</button><button id="mirrorBtn" title="Flip the layout left ↔ right">⇄ Mirror</button><button id="ledBtn" class="on" title="Hidden LED strips under cabinets, along the floor and in the ceiling cove">LEDs</button></div>
    <span class="spacer"></span>
-   <div class="chip"><button id="snapBtn">Snapshot</button></div>
+   <div class="chip"><button id="photoBtn" title="Physically based render of the current view">✦ Render photo</button><button id="snapBtn">Snapshot</button></div>
   </div>
   <div class="hint">Drag to orbit · Right-drag to pan · Scroll to zoom · Drag furniture to move it</div>
   <div id="toast"></div>
+  <div id="photoPanel" class="hidden"><div class="ph-row"><b>Rendering photo</b><span id="phCount">0</span></div><div class="ph-bar"><i id="phBar"></i></div><div class="ph-row" style="gap:6px"><span class="ph-note" id="phNote">Light is being traced. Leave the view still — it sharpens over time. You can orbit; it restarts from that view.</span></div><div class="ph-row" style="justify-content:flex-end;gap:6px"><button class="btn" id="phSave">Save image</button><button class="btn pri" id="phStop">Done</button></div></div>
   <div id="selPanel" class="hidden">
    <div class="sp-head"><b id="spName">Item</b><button class="x" id="spClose" aria-label="Deselect">×</button></div>
    <div class="sp-row"><label>Main <input type="color" id="spMain"></label><label>Accent <input type="color" id="spAccent"></label></div>
@@ -236,6 +246,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -277,6 +292,9 @@ const STYLES = [
  {id:'medi', name:'Mediterranean', desc:'Terracotta tile, lime plaster, olive',
   s:{walls:['#efe2d1','plaster'],feature:['#c97b56','plaster'],floor:['#c47a5c','tile'],upper:['#d9c4a5','wood'],ceiling:['#f4ece0','plaster'],bath:['#f0e6d8','terrazzo'],tvwall:['#c97b56','plaster'],cabinets:['#e6d6c0','matte'],stairs:['#b98d64','wood'],metal:['#3a2e26','metal']},
   f:{fabric:'#e3d5c0',wood:'#9a6b45',leg:'#5a3d2a',textile:'#c97b56',textile2:'#7d8b5a',pot:'#c8775a',leaf:'#6b8a4a'}},
+ {id:'noir', name:'Noir & Oak', desc:'Black handleless cabinets, walnut panels, warm LED',
+  s:{walls:['#ece9e4','plaster'],feature:['#7a5a43','panel'],tvwall:['#7a5a43','wood'],floor:['#cdb698','wood'],upper:['#cdb698','wood'],ceiling:['#f3f1ed','paint'],bath:['#d8d3cb','marble'],cabinets:['#262625','matte'],stairs:['#7a5a43','wood'],metal:['#1c1c1c','metal']},
+  f:{fabric:'#6e6b68',wood:'#262625',leg:'#1c1c1c',textile:'#d6cfc4',textile2:'#3a3836',pot:'#1f1f1f',leaf:'#5d7550'}},
  {id:'minimal', name:'Warm Minimal', desc:'Greige, microcement, blond wood',
   s:{walls:['#e4ddd3','plaster'],feature:['#d7cbbb','plaster'],floor:['#c9bfb2','concrete'],upper:['#d4bc98','wood'],ceiling:['#ece6dd','plaster'],bath:['#cfc6b9','concrete'],tvwall:['#cdb38e','panel'],cabinets:['#ddd3c5','matte'],stairs:['#cdb38e','wood'],metal:['#6b625a','metal']},
   f:{fabric:'#d9cfc1',wood:'#cbab80',leg:'#6b625a',textile:'#efe9df',textile2:'#b4a38c',pot:'#d8cdbd',leaf:'#6a7f58'}},
@@ -308,7 +326,7 @@ function surfacesFromStyle(id){
 }
 function defaultState(){
  return {style:'scandi', surfaces:surfacesFromStyle('scandi'), items:null, view:'all', cutaway:true, ceiling:false,
-  evening:false, mode:'loft', trace:null, mirror:true, layoutVersion:3, height:4.05, addLevel:'ground', restyleFurn:true};
+  evening:false, leds:true, quality:'real', mode:'loft', trace:null, mirror:true, layoutVersion:3, height:4.05, addLevel:'ground', restyleFurn:true};
 }
 function loadState(){ try{ const s = JSON.parse(localStorage.getItem(LS_KEY)); if(s && s.surfaces){ if ((s.layoutVersion || 0) < 3 && s.mode !== 'traced') { s.items = null; s.layoutVersion = 3; } return Object.assign(defaultState(), s); } }catch(e){} return null; }
 let state = loadState() || defaultState();
@@ -351,10 +369,25 @@ for (const p of [[1.3,2.2,1.9],[1.3,3.4,6.2],[1.6,4.4,2.6]]) {
  const l = new THREE.PointLight(0xffd6a0, 0, 9, 1.6); l.position.set(...p); scene.add(l); roomLights.push(l);
 }
 
+const photo = {pt:null, mod:null, active:false, goal:400, saved:null, onChange:null};
+RectAreaLightUniformsLib.init();
+// Realistic mode: multisampled HDR target → ambient occlusion (GTAO) → tone mapping
+const composerTarget = new THREE.WebGLRenderTarget(1, 1, {type:THREE.HalfFloatType, samples:4});
+const composer = new EffectComposer(renderer, composerTarget);
+composer.addPass(new RenderPass(scene, camera));
+const gtao = new GTAOPass(scene, camera, 1, 1);
+gtao.blendIntensity = 0.9;
+gtao.updateGtaoMaterial({radius:0.45, distanceExponent:1.4, thickness:1.2, scale:1.1, samples:16});
+gtao.updatePdMaterial({lumaPhi:10, depthPhi:2, normalPhi:3, radius:5, rings:2, samples:16});
+composer.addPass(gtao);
+composer.addPass(new OutputPass());
 function resize(){
  const w = viewport.clientWidth, h = viewport.clientHeight;
  renderer.setSize(w, h); camera.aspect = w / Math.max(h,1); camera.updateProjectionMatrix();
+ composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h);
+ if (photo.active) photo.pt.updateCamera();
 }
+function renderFrame(){ if (state.quality === 'real') composer.render(); else renderer.render(scene, camera); }
 new ResizeObserver(resize).observe(viewport); resize();
 
 /* ----------------------------- textures ----------------------------- */
@@ -363,8 +396,8 @@ const TEX = {};
 const TEX_SIZE = {wood:2.4, chevron:2.0, tile:1.2, marble:2.4, concrete:3, terrazzo:1.2, brick:1.6, panel:1.2, plaster:2.5};
 function makeTex(kind){
  if (TEX[kind]) return TEX[kind];
- const N = 512, c = document.createElement('canvas'); c.width = c.height = N;
- const g = c.getContext('2d'), r = rng(kind.length * 977 + 13);
+ const N = 512, c = document.createElement('canvas'); c.width = c.height = N * 2;
+ const g = c.getContext('2d'); g.scale(2, 2); const _unused = 0, r = rng(kind.length * 977 + 13);
  const gray = (v, a=1) => `rgba(${v|0},${v|0},${v|0},${a})`;
  if (kind === 'wood') {
   const n = 12, pw = N / n;
@@ -436,7 +469,7 @@ function makeTex(kind){
 const PLAIN = new Set(['paint','matte','gloss','metal']);
 
 const mats = {};
-for (const s of SURFACES) mats[s.key] = new THREE.MeshStandardMaterial({color:'#fff', roughness:.8});
+for (const s of SURFACES) mats[s.key] = new THREE.MeshPhysicalMaterial({color:'#fff', roughness:.8});
 const matKey = new Map(Object.entries(mats).map(([k, m]) => [m, k]));
 function applySurface(key){
  const s = state.surfaces[key], m = mats[key]; if (!s) return;
@@ -444,6 +477,12 @@ function applySurface(key){
  m.map = PLAIN.has(s.finish) ? null : makeTex(s.finish);
  m.roughness = ROUGH[s.finish] ?? .8;
  m.metalness = s.finish === 'metal' ? .55 : 0;
+ // fine relief from the same pattern: plank joints, slat grooves, brick mortar, tile grout
+ const BUMP = {wood:.6, chevron:.6, panel:1.4, brick:1.6, tile:.8, marble:.25, concrete:.5, plaster:.4, terrazzo:.25};
+ m.bumpMap = m.map; m.bumpScale = BUMP[s.finish] || 0;
+ // lacquer & polished stone get a clear coat; other finishes stay matte
+ m.clearcoat = s.finish === 'gloss' ? 1 : s.finish === 'marble' ? .6 : s.finish === 'tile' ? .35 : 0;
+ m.clearcoatRoughness = .12;
  m.needsUpdate = true;
 }
 function applyAllSurfaces(){ for (const s of SURFACES) applySurface(s.key); }
@@ -464,6 +503,7 @@ const FIX = {
  soil: new THREE.MeshStandardMaterial({color:'#3b2d22', roughness:1}),
  ac: new THREE.MeshStandardMaterial({color:'#e9e9e6', roughness:.6}),
  glow: new THREE.MeshStandardMaterial({color:'#fff6e6', emissive:'#ffdcae', emissiveIntensity:0}),
+ led: new THREE.MeshStandardMaterial({color:'#fff4e2', emissive:'#ffc78f', emissiveIntensity:0}),
 };
 
 /* --------------------------- structure --------------------------- */
@@ -510,7 +550,9 @@ function wall(axis, f0, f1, s0, s1, y0, y1, mat, side, openings = []){
   else box(f0, f1, p[2], p[3], p[0], p[1], mat, {side, cast:!side});
  }
 }
+let LEDS = [], ledLights = [];
 function clearStructure(){
+ LEDS = []; ledLights.forEach(l => scene.remove(l)); ledLights = [];
  structure.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
  structure.clear(); cutMeshes = []; ceilingMeshes = [];
 }
@@ -580,6 +622,10 @@ function buildLoft(){
  const tvMid = (tvZ0 + tvZ1) / 2;
  box(ST_X - 0.045, ST_X + 0.02, 0.76, 1.34, tvMid - 0.52, tvMid + 0.52, FIX.dark);
  box(ST_X - 0.047, ST_X - 0.044, 0.775, 1.325, tvMid - 0.505, tvMid + 0.505, FIX.screen, {cast:false});
+ LEDS.push({x:ST_X - 0.17, y:0.29, z:(tvZ0 + tvZ1) / 2, len:tvZ1 - tvZ0 - 0.1, axis:'z', face:'down', k:.5});
+ // toe-kick light along the under-stair closet
+ box(ST_X - 0.005, ST_X + 0.005, 0.012, 0.022, tvZ1 + 0.05, ST_Z0 - 0.05, FIX.led, {cast:false});
+ LEDS.push({x:ST_X - 0.03, y:0.03, z:(tvZ1 + ST_Z0) / 2, len:ST_Z0 - tvZ1 - 0.1, axis:'z', face:'down', k:.4});
  // handrail on the open side
  const railStart = new THREE.Vector3(ST_X + 0.03, rise + 0.9, ST_Z0 - run * 0.5);
  const railEnd = new THREE.Vector3(ST_X + 0.03, MZ + 0.9, MZ_EDGE + run * 0.5);
@@ -639,6 +685,10 @@ function buildLoft(){
  box(0.3, 0.62, 0.89, 0.905, 3.0, 3.45, FIX.dark, {cast:false});
  box(0.28, 0.66, 0.9, 0.91, 3.65, 4.05, FIX.screen, {cast:false});
  box(L, 0.5, 1.45, UNDER - 0.04, 2.85, 4.2, M.cabinets);
+ // hidden LED strips: under the wall cabinets and in the kitchen toe-kick
+ box(0.42, 0.46, 1.437, 1.45, 2.9, 4.15, FIX.led, {cast:false});
+ box(0.765, 0.775, 0.012, 0.022, 2.9, 4.15, FIX.led, {cast:false});
+ LEDS.push({x:0.44, y:1.43, z:3.52, len:1.25, axis:'z', face:'down', k:1}, {x:0.8, y:0.03, z:3.52, len:1.25, axis:'z', face:'down', k:.45});
  box(L + 0.001, L + 0.005, 0.9, 1.45, 2.85, 4.2, M.bath, {cast:false});
  box(0.5, 0.505, 1.5, UNDER - 0.08, 3.52, 3.526, FIX.groove, {cast:false});
 
@@ -648,6 +698,17 @@ function buildLoft(){
  for (const z of [2.2, 2.95, 3.72]) box(0.72, 0.725, MZ + 0.05, MZ + wH - 0.05, z, z + 0.006, FIX.groove, {cast:false});
  // little downlights under the slab
  for (const p of [[1.0, 1.9], [1.3, 3.6]]) box(p[0] - 0.06, p[0] + 0.06, UNDER - 0.005, UNDER, p[1] - 0.06, p[1] + 0.06, FIX.glow, {cast:false});
+ // LED cove under the mezzanine edge
+ box(L + 0.05, ST_X - 0.05, UNDER - 0.012, UNDER - 0.002, MZ_EDGE - 0.06, MZ_EDGE - 0.03, FIX.led, {cast:false});
+ LEDS.push({x:(L + ST_X) / 2, y:UNDER - 0.02, z:MZ_EDGE - 0.045, len:ST_X - L - 0.1, axis:'x', face:'down', k:.8});
+ // floating ceiling with an indirect LED cove over the double-height void (shown with the ceiling)
+ const cz0 = MZ_EDGE + 0.35, cz1 = ZF - 0.35, cx0 = 0.55, cx1 = ST_X - 0.3;
+ box(cx0, cx1, H - 0.24, H - 0.17, cz0, cz1, M.ceiling, {ceiling:true, cast:false});
+ for (const [a, b, c, d] of [[cx0, cx1, cz0, cz0 + 0.02], [cx0, cx1, cz1 - 0.02, cz1], [cx0, cx0 + 0.02, cz0, cz1], [cx1 - 0.02, cx1, cz0, cz1]]) box(a, b, H - 0.17, H - 0.16, c, d, FIX.led, {ceiling:true, cast:false});
+ LEDS.push({x:(cx0 + cx1) / 2, y:H - 0.15, z:cz0 + 0.01, len:cx1 - cx0, axis:'x', face:'up', k:1.2, ceil:true},
+  {x:(cx0 + cx1) / 2, y:H - 0.15, z:cz1 - 0.01, len:cx1 - cx0, axis:'x', face:'up', k:1.2, ceil:true},
+  {x:cx0 + 0.01, y:H - 0.15, z:(cz0 + cz1) / 2, len:cz1 - cz0, axis:'z', face:'up', k:1.2, ceil:true},
+  {x:cx1 - 0.01, y:H - 0.15, z:(cz0 + cz1) / 2, len:cz1 - cz0, axis:'z', face:'up', k:1.2, ceil:true});
  // pendant over the living area
  const PZ = 5.3, PY = Math.min(3.0, H - 0.5);
  box(1.29, 1.31, PY + 0.1, H, PZ - 0.01, PZ + 0.01, FIX.dark, {cast:false});
@@ -657,11 +718,11 @@ function buildLoft(){
  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), FIX.glow); bulb.position.set(1.3, PY - 0.07, PZ); structure.add(bulb);
  roomLights[0].position.set(1.2, UNDER - 0.15, 2.2); roomLights[1].position.set(1.3, PY - 0.2, PZ); roomLights[2].position.set(1.6, Math.min(H - 0.4, 4.5), 2.6);
  roomLights.forEach(l => l.visible = true);
- applyMirror(); refreshVisibility();
+ applyMirror(); buildLedLights(); refreshVisibility();
 }
 
 function buildTraced(tr){
- clearStructure();
+ clearStructure(); FIX.led.emissiveIntensity = 0;
  const H = tr.height, segs = [];
  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
  for (const ch of tr.chains) for (const p of ch) { x0 = Math.min(x0, p.x); z0 = Math.min(z0, p.z); x1 = Math.max(x1, p.x); z1 = Math.max(z1, p.z); }
@@ -790,6 +851,13 @@ const CATALOG = {
   RB(g, 1.5, .1, .62, 0, .05, 0, M, .04); BX(g, 1.42, .01, .6, 0, .42, 0, FIX.water);
   CY(g, .016, .016, .95, -.95, .475, 0, A, 12); BX(g, .18, .025, .025, -.87, .94, 0, A); }},
  pouf:{name:'Pouf', cat:'Decor', dim:'Ø 45 cm', roles:['fabric','leg'], build:(g,M,A)=>{ CY(g, .22, .22, .4, 0, .2, 0, M, 32); CY(g, .2, .22, .03, 0, .415, 0, M, 32); }},
+ curtain:{name:'Sheer curtains', cat:'Decor', dim:'200 × 260 cm', roles:['textile','leg'], build:(g,M,A)=>{
+  const w = 2.0, h = 2.55, geo = new THREE.PlaneGeometry(w, h, 90, 1), pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(pos.getX(i) * 22) * .035);
+  geo.computeVertexNormals();
+  const cm = M.clone(); cm.transparent = true; cm.opacity = .6; cm.side = THREE.DoubleSide; cm.sheen = .8; cm.depthWrite = false; g.userData.extraMats = [cm];
+  const m = add(g, geo, cm, 0, h / 2 + .03, 0); m.castShadow = false;
+  CY(g, .012, .012, w + .1, 0, h + .05, 0, A, 10).rotation.z = Math.PI / 2; }},
  cushion:{name:'Floor cushion', cat:'Decor', dim:'60 × 60 cm', roles:['textile2','leg'], build:(g,M,A)=>{ RB(g, .6, .12, .6, 0, .06, 0, M, .05); }},
  floorLamp:{name:'Floor lamp', cat:'Decor', dim:'Ø 40 cm', roles:['textile','leg'], lamp:true, build:(g,M,A)=>{
   CY(g, .15, .16, .03, 0, .015, 0, A, 32); CY(g, .012, .012, 1.42, 0, .74, 0, A, 10);
@@ -827,6 +895,7 @@ const SIZES = {
  sideboard:{base:[160,45,77], p:[['Small',120,45,77],['Medium',160,45,77],['Large',200,45,77]]},
  bathtub:{base:[165,78,95], p:[['Compact',150,70,95],['Standard',165,78,95],['Large',180,80,95]]},
  pouf:{base:[45,45,43], round:1, p:[['Small',40,40,40],['Medium',45,45,43],['Large',55,55,45]]},
+ curtain:{base:[200,10,260], p:[['Single window',140,10,240],['Wide window',200,10,260],['Floor to ceiling',240,10,380]]},
  cushion:{base:[60,60,12], p:[['Small',50,50,12],['Medium',60,60,12],['Large',80,80,14]]},
  floorLamp:{base:[42,42,167], round:1, p:[['Short',42,42,150],['Standard',42,42,167],['Tall',45,45,185]]},
  plant:{base:[40,40,140], p:[['Small',30,30,70],['Medium',40,40,140],['Large',55,55,180]]},
@@ -867,8 +936,9 @@ function createItem(d){
  const def = CATALOG[d.type]; if (!def) return null;
  const g = new THREE.Group();
  const colors = d.colors || styleColors(d.type, state.style);
- const M = new THREE.MeshStandardMaterial({color:colors.main, roughness:.85});
- const A = new THREE.MeshStandardMaterial({color:colors.accent, roughness:.5, metalness:.15});
+ const fabric = ['fabric','textile','textile2'].includes(def.roles[0]);
+ const M = new THREE.MeshPhysicalMaterial({color:colors.main, roughness:fabric ? .9 : .55, sheen:fabric ? .6 : 0, sheenRoughness:.75, sheenColor:new THREE.Color('#ffffff').multiplyScalar(.35), clearcoat:def.roles[0] === 'wood' ? .25 : 0, clearcoatRoughness:.35});
+ const A = new THREE.MeshPhysicalMaterial({color:colors.accent, roughness:def.roles[1] === 'leg' ? .35 : .55, metalness:def.roles[1] === 'leg' ? .6 : .05});
  def.build(g, M, A);
  g.userData = Object.assign(g.userData, {isFurniture:true, type:d.type, level:d.level || 'ground', colors:{...colors}, M, A});
  applySize(g, d.size || baseSize(d.type));
@@ -923,6 +993,17 @@ function updateCutaway(){
 }
 
 /* --------------------------- lighting --------------------------- */
+function buildLedLights(){
+ ledLights.forEach(l => scene.remove(l)); ledLights = [];
+ for (const d of LEDS) {
+  const w = d.axis === 'x' ? d.len : 0.05, h = d.axis === 'z' ? d.len : 0.05;
+  // rotation.x = -90° aims the light down (+90° up); local x stays world x, local y becomes world z
+  const l = new THREE.RectAreaLight(0xffc387, 0, w, h);
+  l.position.set(wx(d.x), d.y, d.z); l.rotation.x = d.face === 'up' ? Math.PI / 2 : -Math.PI / 2;
+  l.userData = d; scene.add(l); ledLights.push(l);
+ }
+ applyLighting();
+}
 function applyItemLighting(g){
  const ev = state.evening;
  if (g.userData.light) { g.userData.light.intensity = ev ? 3 : 0; g.userData.M.emissive.set(ev ? '#ffb46e' : '#000000'); g.userData.M.emissiveIntensity = ev ? .55 : 0; }
@@ -936,6 +1017,10 @@ function applyLighting(){
  scene.background.set(ev ? '#24262a' : '#e8e5df');
  roomLights.forEach(l => l.intensity = ev ? 5 : 0);
  FIX.glow.emissiveIntensity = ev ? 2.2 : 0.4;
+ const on = state.leds && state.mode !== 'traced';
+ FIX.led.emissiveIntensity = on ? (ev ? 6 : 4) : 0;
+ for (const l of ledLights) l.intensity = on && (!l.userData.ceil || state.ceiling) ? (ev ? 26 : 14) * l.userData.k : 0;
+ $('#ledBtn') && $('#ledBtn').classList.toggle('on', !!state.leds);
  renderer.toneMappingExposure = ev ? 1.15 : 1.0;
  items.forEach(applyItemLighting);
  $$('#lightSeg button').forEach(b => b.classList.toggle('on', (b.dataset.l === 'evening') === ev));
@@ -997,7 +1082,7 @@ function shown(o){ for (let p = o; p; p = p.parent) if (!p.visible) return false
 function rootOf(o){ while (o && !o.userData.isFurniture) o = o.parent; return o; }
 let down = null, drag = null;
 canvas.addEventListener('pointerdown', e => {
- if (e.button !== 0) return;
+ if (e.button !== 0 || photo.active) return;
  down = {x:e.clientX, y:e.clientY};
  setRay(e); const cy = clipY();
  const hit = ray.intersectObjects(furniture.children, true).find(h => h.point.y < cy && shown(h.object) && h.object.isMesh);
@@ -1015,6 +1100,7 @@ canvas.addEventListener('pointermove', e => {
  drag.root.position.x = p.x + drag.off.x; drag.root.position.z = p.z + drag.off.z; clampItem(drag.root); selHelper.setFromObject(drag.root);
 });
 canvas.addEventListener('pointerup', e => {
+ if (photo.active) { down = null; return; }
  const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4;
  if (drag) { controls.enabled = true; try{ canvas.releasePointerCapture(drag.id); }catch(_){} drag = null; save(); down = null; return; }
  if (down && !moved && e.button === 0) {
@@ -1166,9 +1252,9 @@ function setView(v){
 $$('#viewChip button').forEach(b => b.onclick = () => setView(b.dataset.v));
 $$('#camChip button').forEach(b => b.onclick = () => cameraPreset(b.dataset.c));
 $('#cutBtn').onclick = e => { state.cutaway = !state.cutaway; e.target.classList.toggle('on', state.cutaway); save(); };
-$('#ceilBtn').onclick = e => { state.ceiling = !state.ceiling; e.target.classList.toggle('on', state.ceiling); refreshVisibility(); if (state.ceiling && state.view !== 'all') toast('The ceiling shows in Whole loft view'); save(); };
+$('#ceilBtn').onclick = e => { state.ceiling = !state.ceiling; e.target.classList.toggle('on', state.ceiling); refreshVisibility(); applyLighting(); if (state.ceiling && state.view !== 'all') toast('The ceiling shows in Whole loft view'); save(); };
 $('#snapBtn').onclick = () => {
- const was = selHelper.visible; selHelper.visible = false; renderer.render(scene, camera);
+ const was = selHelper.visible; selHelper.visible = false; if (!photo.active) renderFrame();
  const url = canvas.toDataURL('image/png'); selHelper.visible = was;
  openModal('Snapshot', `<img src="${url}" alt="Snapshot of the 3D design"><p class="note" style="margin:0">Right-click (or long-press) the image and choose “Save image”.</p>`);
 };
@@ -1395,7 +1481,52 @@ function boot(){
  resize(); cameraPreset('iso', true);
  save();
 }
+/* --------------------------- photo render (path tracing) --------------------------- */
+async function startPhoto(){
+ if (photo.active) return;
+ $('#photoBtn').disabled = true; toast('Preparing the photo render…');
+ try { photo.mod = photo.mod || await import('three-gpu-pathtracer'); }
+ catch (e) { console.error(e); toast('The photo renderer could not load — check your connection.'); $('#photoBtn').disabled = false; return; }
+ const {WebGLPathTracer, GradientEquirectTexture} = photo.mod;
+ select(null); camAnim = null;
+ if (state.view !== 'all') { state.view = 'all'; $$('#viewChip button').forEach(b => b.classList.toggle('on', b.dataset.v === 'all')); refreshVisibility(); }
+ updateCutaway();
+ // take everything currently hidden (cut-away walls, hidden ceiling) out of the scene so the tracer ignores it
+ const hidden = []; scene.traverse(o => { if ((o.isMesh || o.isLine) && !shown(o)) hidden.push([o, o.parent]); });
+ hidden.forEach(([o, p]) => p.remove(o));
+ const was = scene.remove(selHelper);
+ const env = new GradientEquirectTexture();
+ env.topColor.set(state.evening ? '#1a2030' : '#dde8f4'); env.bottomColor.set(state.evening ? '#100d0a' : '#a39686'); env.exponent = 2; env.update();
+ photo.saved = {env:scene.environment, envI:scene.environmentIntensity, hidden, tex:env};
+ scene.environment = env; scene.environmentIntensity = state.evening ? 0.12 : 0.9;
+ try {
+  if (!photo.pt) {
+   photo.pt = new WebGLPathTracer(renderer);
+   Object.assign(photo.pt, {renderDelay:0, fadeDuration:0, minSamples:1, dynamicLowRes:true, lowResScale:.25, bounces:6, filterGlossyFactor:.5});
+   photo.pt.tiles.set(2, 2);
+  }
+  photo.pt.setScene(scene, camera);
+ } catch (e) { console.error(e); toast('Photo render failed on this device.'); photo.active = true; stopPhoto(); return; }
+ photo.active = true;
+ photo.onChange = () => photo.pt.updateCamera(); controls.addEventListener('change', photo.onChange);
+ $('#photoPanel').classList.remove('hidden'); $('#phNote').textContent = 'Light is being traced. Keep the view still — it sharpens over time. Orbiting restarts it from the new view.';
+}
+function stopPhoto(){
+ if (!photo.active) return; photo.active = false;
+ controls.removeEventListener('change', photo.onChange);
+ const sv = photo.saved; if (sv) { sv.hidden.forEach(([o, p]) => p.add(o)); scene.environment = sv.env; scene.environmentIntensity = sv.envI; sv.tex.dispose(); }
+ scene.add(selHelper); photo.saved = null;
+ $('#photoPanel').classList.add('hidden'); $('#photoBtn').disabled = false; applyLighting();
+}
+$('#photoBtn').onclick = startPhoto;
+$('#phStop').onclick = stopPhoto;
+$('#phSave').onclick = () => openModal('Rendered photo', `<img src="${canvas.toDataURL('image/png')}" alt="Rendered photo of the design"><p class="note" style="margin:0">Right-click (or long-press) the image and choose “Save image”.</p>`);
+$('#ledBtn').onclick = () => { state.leds = !state.leds; applyLighting(); save(); toast(state.leds ? 'LED strips on' : 'LED strips off'); };
+function setQuality(q){ state.quality = q; $$('#qualSeg button').forEach(b => b.classList.toggle('on', b.dataset.q === q)); sun.shadow.mapSize.set(q === 'real' ? 4096 : 2048, q === 'real' ? 4096 : 2048); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+$$('#qualSeg button').forEach(b => b.onclick = () => { setQuality(b.dataset.q); save(); });
+
 boot();
+setQuality(state.quality || 'real');
 $('#loading').remove();
 
 renderer.setAnimationLoop(t => {
@@ -1404,9 +1535,17 @@ renderer.setAnimationLoop(t => {
   camera.position.lerpVectors(camAnim.p0, camAnim.p1, e); controls.target.lerpVectors(camAnim.t0, camAnim.t1, e);
   if (k >= 1) camAnim = null;
  }
- controls.update(); updateCutaway();
+ controls.update();
+ if (photo.active) {
+  photo.pt.renderSample();
+  const n = Math.floor(photo.pt.samples); $('#phCount').textContent = `${n} / ${photo.goal} passes`;
+  $('#phBar').style.width = Math.min(100, n / photo.goal * 100) + '%';
+  if (n >= photo.goal) $('#phNote').textContent = 'Done. Save the image, or keep it running for an even cleaner result.';
+  return;
+ }
+ updateCutaway();
  if (selected) selHelper.setFromObject(selected);
- renderer.render(scene, camera);
+ renderFrame();
 });
 window.__loft = {scene, camera, controls, state, get items(){ return items; }, TR, get bounds(){ return state.bounds; }, cutMeshes:() => cutMeshes};
 </script>
