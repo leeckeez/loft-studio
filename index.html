@@ -215,10 +215,13 @@ select,input[type=number]{height:30px;border:1px solid var(--line);border-radius
    <button class="btn" id="trCalib"><span class="stepn">1</span>Set scale</button>
    <span id="calibBox"><input type="number" id="calibMm" value="3200" min="1"> mm <button class="btn pri" id="calibOk">Apply</button></span>
    <button class="btn" id="trDraw"><span class="stepn">2</span>Draw walls</button>
+   <button class="btn" id="trDoor" title="Click on a traced wall to cut a doorway">Add doorways</button>
   </div>
   <label><input type="checkbox" id="trOrtho" checked> Straight lines</label>
+  <span style="display:flex;gap:4px"><button class="btn" id="trZoomOut" title="Zoom out">−</button><button class="btn" id="trZoomFit" title="Fit the whole plan">Fit</button><button class="btn" id="trZoomIn" title="Zoom in">+</button></span>
   <button class="btn" id="trUndo">Undo</button>
   <button class="btn" id="trClear">Clear walls</button>
+  <label>Door width <input type="number" id="trDoorW" value="90" step="5" min="50" max="400"> cm</label>
   <label>Wall height <input type="number" id="trH" value="2.8" step="0.1" min="2" max="8"> m</label>
   <span class="spacer" style="flex:1"></span>
   <button class="btn pri" id="trBuild"><span class="stepn" style="background:var(--acc);color:#fff">3</span>Build 3D</button>
@@ -666,18 +669,29 @@ function buildTraced(tr){
  box(x0 - 0.4, x1 + 0.4, -0.35, -0.04, z0 - 0.4, z1 + 0.4, FIX.plinth, {cast:false});
  box(x0, x1, -0.04, 0, z0, z1, mats.floor, {cast:false});
  const Tw = 0.14, edge = 0.35;
- for (const ch of tr.chains) for (let i = 0; i < ch.length - 1; i++) {
+ const doors = tr.doors || [], DOOR_H = Math.min(2.1, H - 0.1);
+ tr.chains.forEach((ch, ci) => { for (let i = 0; i < ch.length - 1; i++) {
   const a = ch[i], b = ch[i + 1], dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz); if (len < 0.05) continue;
-  const g = new THREE.BoxGeometry(len + Tw, H, Tw); boxUV(g);
-  const m = new THREE.Mesh(g, mats.walls); m.position.set((a.x + b.x) / 2, H / 2, (a.z + b.z) / 2);
-  m.rotation.y = -Math.atan2(dz, dx); m.receiveShadow = true;
-  const mid = m.position;
+  const mid = new THREE.Vector3((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
   let n = new THREE.Vector3(-dz, 0, dx).normalize();
   if (n.x * (mid.x - cx) + n.z * (mid.z - cz) < 0) n.negate();
   const nearEdge = Math.min(mid.x - x0, x1 - mid.x, mid.z - z0, z1 - mid.z) < edge;
-  if (nearEdge) { m.userData.normal = n; cutMeshes.push(m); } else m.castShadow = true;
-  structure.add(m);
- }
+  // openings along this segment, in local coordinates centred on the segment midpoint
+  const ops = doors.filter(d => d.ci === ci && d.si === i).map(d => {
+   const w = Math.min(d.w || 0.9, len - 0.1), c = clamp(d.c, w / 2, len - w / 2) - len / 2; return {a:c - w / 2, b:c + w / 2};
+  }).sort((p, q) => p.a - q.a);
+  const pieces = []; let cur = -(len + Tw) / 2;
+  for (const o of ops) { if (o.a > cur) pieces.push([cur, o.a, 0, H]); pieces.push([o.a, o.b, DOOR_H, H]); cur = Math.max(cur, o.b); }
+  if (cur < (len + Tw) / 2) pieces.push([cur, (len + Tw) / 2, 0, H]);
+  const seg = new THREE.Group(); seg.position.copy(mid); seg.rotation.y = -Math.atan2(dz, dx); structure.add(seg);
+  for (const [p0, p1, y0, y1] of pieces) {
+   if (p1 - p0 < 0.01) continue;
+   const g = new THREE.BoxGeometry(p1 - p0, y1 - y0, Tw); boxUV(g);
+   const m = new THREE.Mesh(g, mats.walls); m.position.set((p0 + p1) / 2, (y0 + y1) / 2, 0); m.receiveShadow = true;
+   if (nearEdge) { m.userData.normal = n; cutMeshes.push(m); } else m.castShadow = true;
+   seg.add(m);
+  }
+ } });
  box(x0 - Tw, x1 + Tw, H, H + 0.12, z0 - Tw, z1 + Tw, mats.ceiling, {ceiling:true, cast:false});
  state.bounds = {x0, x1, z0, z1, cx, cz};
  applyMirror();
@@ -932,18 +946,34 @@ let camAnim = null;
 function flyTo(pos, target, ms = 700){
  camAnim = {p0:camera.position.clone(), t0:controls.target.clone(), p1:new THREE.Vector3(...pos), t1:new THREE.Vector3(...target), start:performance.now(), ms};
 }
-function cameraPreset(c){
+function sceneBox(){
  const b = state.mode === 'traced' && state.bounds;
- const cx = b ? b.cx : 1.6, cz = b ? b.cz : 4.3, span = b ? Math.max(b.x1 - b.x0, b.z1 - b.z0) : 8.65;
- const ty = state.view === 'upper' ? MZ + 0.6 : state.view === 'ground' ? 0.8 : 1.4;
- if (c === 'iso') flyTo([cx + span * 0.85, ty + span * 1.05, cz + span * 1.2], [cx, ty, cz]);
- if (c === 'top') flyTo([cx, span * 1.9 + 2, cz + 0.01], [cx, 0, cz]);
- if (c === 'front') flyTo([b ? cx : wx(1.3), ty + 0.6, (b ? b.z1 : ZF) + span * 0.9], [b ? cx : wx(1.3), ty, cz]);
- if (c === 'inside') {
-  if (b) flyTo([cx, 1.6, b.z0 + 0.6], [cx, 1.3, b.z1]);
-  else if (state.view === 'upper') flyTo([wx(1.0), MZ + 1.35, 4.4], [wx(2.0), MZ + 0.5, 0.6]);
-  else flyTo([wx(1.25), 1.6, 0.75], [wx(1.25), 1.2, 6.5]);
- }
+ if (b) return {cx:b.cx, cz:b.cz, sx:b.x1 - b.x0, sz:b.z1 - b.z0, h:(state.trace && state.trace.height) || 2.8};
+ return {cx:1.6, cz:4.3, sx:3.4, sz:8.8, h:state.height};
+}
+// distance at which a sphere of radius r fills the view, whatever the window's shape
+function fitDistance(r){
+ const v = THREE.MathUtils.degToRad(camera.fov), hf = 2 * Math.atan(Math.tan(v / 2) * camera.aspect);
+ return r / Math.sin(Math.min(v, hf) / 2) * 1.05;
+}
+function presetPose(c){
+ const B = sceneBox(), b = state.mode === 'traced' && state.bounds;
+ const ty = state.view === 'upper' ? MZ + 0.6 : state.view === 'ground' ? 0.8 : Math.min(1.4, B.h / 2);
+ const r3 = 0.5 * Math.hypot(B.sx, B.sz, B.h), r2 = 0.5 * Math.hypot(B.sx, B.sz);
+ const at = (dir, r, y) => { const d = new THREE.Vector3(...dir).normalize().multiplyScalar(fitDistance(r)); return [[B.cx + d.x, y + d.y, B.cz + d.z], [B.cx, y, B.cz]]; };
+ if (c === 'iso') return at([0.55, 0.75, 0.8], r3, ty);
+ if (c === 'top') return at([0, 1, 0.002], r2, 0);
+ if (c === 'front') return at([0, 0.3, 1], r3, ty);
+ if (b) return [[B.cx, 1.6, b.z0 + 0.6], [B.cx, 1.3, b.z1]];
+ if (state.view === 'upper') return [[wx(1.0), MZ + 1.35, 4.4], [wx(2.0), MZ + 0.5, 0.6]];
+ return [[wx(1.25), 1.6, 0.75], [wx(1.25), 1.2, 6.5]];
+}
+function cameraPreset(c, instant){
+ const B = sceneBox();
+ controls.maxDistance = Math.max(45, fitDistance(0.5 * Math.hypot(B.sx, B.sz, B.h)) * 3);
+ const [pos, tgt] = presetPose(c);
+ if (instant) { camera.position.set(...pos); controls.target.set(...tgt); camAnim = null; }
+ else flyTo(pos, tgt);
 }
 
 /* --------------------------- selection & drag --------------------------- */
@@ -1191,15 +1221,17 @@ function updateModeUI(){
 }
 
 /* --------------------------- plan tracer --------------------------- */
-const TR = {img:null, s:1, ox:0, oy:0, mode:'calib', calib:[], pxPerM:null, chains:[], chain:[], mouse:null};
+const TR = {img:null, src:'', s:1, ox:0, oy:0, mode:'calib', calib:[], pxPerM:null, chains:[], chain:[], doors:[], mouse:null, pan:null, spaceDown:false};
 const tc = $('#tcanvas'), tg = tc.getContext('2d');
 function trStatus(msg){ $('#trStatus').textContent = msg; }
 function trSetMode(m){
  TR.mode = m; $('#trCalib').classList.toggle('on', m === 'calib' || m === 'calibInput'); $('#trDraw').classList.toggle('on', m === 'draw');
+ $('#trDoor').classList.toggle('on', m === 'door');
  $('#calibBox').classList.toggle('on', m === 'calibInput');
- if (m === 'calib') trStatus('Step 1 — Click both ends of a dimension you know (for this plan: the 3200 mm width line at the top).');
+ if (m === 'calib') trStatus('Step 1 — Click both ends of a dimension you know' + (TR.src === 'blueprint.jpg' ? ' (for this plan: the 3200 mm width line at the top).' : ': a dimension line, or a wall whose real length you know. Scroll to zoom, right-drag or Space+drag to pan.'));
+ if (m === 'door') trStatus('Doorways — click on a traced wall where a door or opening is. Set the width below. Undo removes the last one.');
  if (m === 'calibInput') { trStatus('Enter the real length of the line you just drew, then Apply.'); setTimeout(() => $('#calibMm').focus(), 0); }
- if (m === 'draw') trStatus('Step 2 — Click to place wall corners. Double-click or press Enter to finish a wall run, click the first point to close a room. Esc cancels the current run.');
+ if (m === 'draw') trStatus('Step 2 — Click to place wall corners. Double-click or press Enter to finish a wall run, click the first point to close a room. Esc cancels. Scroll to zoom, right-drag or Space+drag to pan.');
  trDraw();
 }
 function trFit(){
@@ -1210,7 +1242,7 @@ function trFit(){
 }
 function trLoad(src){
  const im = new Image();
- im.onload = () => { TR.img = im; TR.calib = []; TR.chains = []; TR.chain = []; TR.pxPerM = null; trFit(); trSetMode('calib'); };
+ im.onload = () => { TR.img = im; TR.src = src; TR.calib = []; TR.chains = []; TR.chain = []; TR.doors = []; TR.pxPerM = null; trFit(); trSetMode('calib'); };
  im.onerror = () => trStatus(/^https?:/i.test(src) ? 'That address could not be loaded as an image (the site may block it). Download the image and use Upload instead.' : 'That image could not be opened. Try a PNG or JPG.');
  im.src = src;
 }
@@ -1233,8 +1265,24 @@ function trFinish(){
  TR.chain = []; trDraw();
  if (TR.chains.length) trStatus(`${TR.chains.length} wall run(s) traced. Keep drawing, or press “Build 3D”.`);
 }
+tc.addEventListener('contextmenu', e => e.preventDefault());
+tc.addEventListener('wheel', e => {
+ if (!TR.img) return; e.preventDefault();
+ const r = tc.getBoundingClientRect(), dpr = tc.width / r.width;
+ trZoomAt(Math.exp(-e.deltaY * 0.0015), (e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr);
+}, {passive:false});
+function trZoomAt(f, mx, my){
+ const s2 = clamp(TR.s * f, 0.02, 40); f = s2 / TR.s;
+ TR.ox = mx - (mx - TR.ox) * f; TR.oy = my - (my - TR.oy) * f; TR.s = s2; trDraw();
+}
+addEventListener('keydown', e => { if (e.code === 'Space' && $('#tracer').classList.contains('on') && !e.target.matches('input')) { TR.spaceDown = true; tc.style.cursor = 'grab'; e.preventDefault(); } });
+addEventListener('keyup', e => { if (e.code === 'Space') { TR.spaceDown = false; tc.style.cursor = 'crosshair'; } });
 tc.addEventListener('pointerdown', e => {
- if (!TR.img) return; const p = trPos(e);
+ if (!TR.img) return;
+ if (e.button === 1 || e.button === 2 || TR.spaceDown) { TR.pan = {x:e.clientX, y:e.clientY, ox:TR.ox, oy:TR.oy}; tc.setPointerCapture(e.pointerId); return; }
+ if (e.button !== 0) return;
+ const p = trPos(e);
+ if (TR.mode === 'door') { trAddDoor(p); return; }
  if (TR.mode === 'calib') { TR.calib.push(p); if (TR.calib.length === 2) trSetMode('calibInput'); trDraw(); return; }
  if (TR.mode === 'draw') {
   const q = trSnap(p);
@@ -1243,7 +1291,25 @@ tc.addEventListener('pointerdown', e => {
  }
 });
 tc.addEventListener('dblclick', () => { if (TR.mode === 'draw') trFinish(); });
-tc.addEventListener('pointermove', e => { if (!TR.img) return; TR.mouse = trPos(e); trDraw(); });
+tc.addEventListener('pointermove', e => {
+ if (!TR.img) return;
+ if (TR.pan) { const r = tc.getBoundingClientRect(), dpr = tc.width / r.width; TR.ox = TR.pan.ox + (e.clientX - TR.pan.x) * dpr; TR.oy = TR.pan.oy + (e.clientY - TR.pan.y) * dpr; trDraw(); return; }
+ TR.mouse = trPos(e); trDraw();
+});
+tc.addEventListener('pointerup', () => { TR.pan = null; });
+function segDist(p, a, b){
+ const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
+ const t = clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / L2, 0, 1);
+ return {d:Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)), t};
+}
+function trAddDoor(p){
+ let best = null;
+ TR.chains.forEach((c, ci) => { for (let si = 0; si < c.length - 1; si++) { const r = segDist(p, c[si], c[si + 1]); if (!best || r.d < best.d) best = {ci, si, t:r.t, d:r.d}; } });
+ if (!best || best.d > 14 / TR.s) { trStatus('Click closer to a traced wall to place a doorway.'); return; }
+ const w = clamp((+$('#trDoorW').value || 90) / 100, 0.5, 4);
+ TR.doors.push({ci:best.ci, si:best.si, t:best.t, w}); trDraw();
+ trStatus(`${TR.doors.length} doorway(s) placed. Keep clicking walls, or press “Build 3D”.`);
+}
 addEventListener('keydown', e => {
  if (!$('#tracer').classList.contains('on')) return;
  if (e.key === 'Enter' && TR.mode === 'draw') trFinish();
@@ -1263,6 +1329,12 @@ function trDraw(){
  line(cal, '#4fb3d9', 3); dots(TR.calib, '#4fb3d9');
  // walls
  for (const c of TR.chains) { line(c, '#e0703c', 6); dots(c, '#fff'); for (let i = 0; i < c.length - 1; i++) label(c[i], c[i + 1]); }
+ for (const d of TR.doors) {
+  const c = TR.chains[d.ci]; if (!c || !c[d.si + 1]) continue; const a = c[d.si], b = c[d.si + 1];
+  const L = Math.hypot(b.x - a.x, b.y - a.y) || 1, half = Math.min(d.w * (TR.pxPerM || 1) / 2, L / 2), ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+  const mx = a.x + (b.x - a.x) * d.t, my = a.y + (b.y - a.y) * d.t;
+  line([{x:mx - ux * half, y:my - uy * half}, {x:mx + ux * half, y:my + uy * half}], '#5cc8f0', 9);
+ }
  const cur = [...TR.chain]; if (TR.mode === 'draw' && cur.length && TR.mouse) cur.push(trSnap(TR.mouse));
  line(cur, '#ffb37a', 6); dots(TR.chain, '#fff');
  if (cur.length >= 2) label(cur[cur.length - 2], cur[cur.length - 1]);
@@ -1273,14 +1345,23 @@ $('#trUrlGo').onclick = () => { const u = $('#trUrl').value.trim(); if (!/^https
 $('#trUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.stopPropagation(); $('#trUrlGo').click(); } });
 $('#trFile').onchange = e => { const f = e.target.files[0]; if (f) trLoad(URL.createObjectURL(f)); e.target.value = ''; };
 $('#trCalib').onclick = () => { TR.calib = []; trSetMode('calib'); };
-$('#trDraw').onclick = () => { if (!TR.pxPerM) { toast('Set the scale first (step 1)'); trStatus('Set the scale first: click both ends of a known dimension.'); return; } trSetMode('draw'); };
+$('#trDraw').onclick = () => { if (TR.mode === 'draw') return; if (!TR.pxPerM) { toast('Set the scale first (step 1)'); trStatus('Set the scale first: click both ends of a known dimension.'); return; } trSetMode('draw'); };
 $('#calibOk').onclick = () => {
  const mm = +$('#calibMm').value; if (TR.calib.length < 2 || !(mm > 0)) return;
  const px = Math.hypot(TR.calib[1].x - TR.calib[0].x, TR.calib[1].y - TR.calib[0].y); if (px < 5) { trStatus('Those points are too close together — click two points farther apart.'); TR.calib = []; trSetMode('calib'); return; }
  TR.pxPerM = px / (mm / 1000); trSetMode('draw');
 };
-$('#trUndo').onclick = () => { if (TR.chain.length) TR.chain.pop(); else if (TR.chains.length) TR.chain = TR.chains.pop(); trDraw(); };
-$('#trClear').onclick = () => { TR.chains = []; TR.chain = []; trDraw(); };
+$('#trUndo').onclick = () => {
+ if (TR.mode === 'door' && TR.doors.length) TR.doors.pop();
+ else if (TR.chain.length) TR.chain.pop();
+ else if (TR.chains.length) { const ci = TR.chains.length - 1; TR.doors = TR.doors.filter(d => d.ci !== ci); TR.chain = TR.chains.pop(); }
+ trDraw();
+};
+$('#trClear').onclick = () => { TR.chains = []; TR.chain = []; TR.doors = []; trDraw(); };
+$('#trDoor').onclick = () => { if (!TR.chains.length) { trStatus('Trace some walls first, then add doorways to them.'); return; } if (TR.chain.length >= 2) trFinish(); trSetMode('door'); };
+$('#trZoomIn').onclick = () => trZoomAt(1.4, tc.width / 2, tc.height / 2);
+$('#trZoomOut').onclick = () => trZoomAt(1 / 1.4, tc.width / 2, tc.height / 2);
+$('#trZoomFit').onclick = () => trFit();
 $('#trBuild').onclick = () => {
  if (TR.chain.length >= 2) trFinish();
  if (!TR.pxPerM) { trStatus('Set the scale first (step 1).'); return; }
@@ -1288,12 +1369,18 @@ $('#trBuild').onclick = () => {
  const all = TR.chains.flat(), mx = Math.min(...all.map(p => p.x)), my = Math.min(...all.map(p => p.y));
  const chains = TR.chains.map(c => c.map(p => ({x:+((p.x - mx) / TR.pxPerM).toFixed(3), z:+((p.y - my) / TR.pxPerM).toFixed(3)})));
  const h = clamp(+$('#trH').value || 2.8, 2, 8);
- state.trace = {chains, height:h}; state.mode = 'traced'; state.view = 'all';
+ const doors = TR.doors.map(d => { const c = TR.chains[d.ci], a = c[d.si], b = c[d.si + 1]; return {ci:d.ci, si:d.si, c:+(Math.hypot(b.x - a.x, b.y - a.y) * d.t / TR.pxPerM).toFixed(3), w:d.w}; });
+ state.trace = {chains, doors, height:h}; state.mode = 'traced'; state.view = 'all';
  buildTraced(state.trace); loadItems([]); updateModeUI(); cameraPreset('iso');
  $('#tracer').classList.remove('on'); switchTab('furniture'); save();
  toast('3D room built — now add furniture and colors');
 };
-new ResizeObserver(() => { if ($('#tracer').classList.contains('on')) trFit(); }).observe($('#tcanvasWrap'));
+new ResizeObserver(() => {
+ if (!$('#tracer').classList.contains('on')) return;
+ const r = tc.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+ if (!TR.img || !tc.width) { trFit(); return; }
+ const nw = r.width * dpr, nh = r.height * dpr; TR.ox += (nw - tc.width) / 2; TR.oy += (nh - tc.height) / 2; tc.width = nw; tc.height = nh; trDraw();
+}).observe($('#tcanvasWrap'));
 
 /* --------------------------- boot & loop --------------------------- */
 function boot(){
@@ -1305,9 +1392,7 @@ function boot(){
  $('#restyleFurn').checked = state.restyleFurn; syncMirrorUI();
  $('#cutBtn').classList.toggle('on', state.cutaway); $('#ceilBtn').classList.toggle('on', state.ceiling);
  setAddLevel(state.addLevel || 'ground'); updateModeUI(); applyLighting();
- const b = state.mode === 'traced' && state.bounds;
- if (b) { const s = Math.max(b.x1 - b.x0, b.z1 - b.z0); camera.position.set(b.cx + s * .85, 1.4 + s * 1.05, b.cz + s * 1.2); controls.target.set(b.cx, 1.4, b.cz); }
- else { camera.position.set(9.5, 10.5, 14.5); controls.target.set(1.6, state.view === 'upper' ? MZ + .6 : state.view === 'ground' ? .8 : 1.4, 4.3); }
+ resize(); cameraPreset('iso', true);
  save();
 }
 boot();
