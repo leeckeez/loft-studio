@@ -210,6 +210,7 @@ select,input[type=number]{height:30px;border:1px solid var(--line);border-radius
 <div id="tracer">
  <div class="tbar">
   <label class="btn" style="cursor:pointer">Upload plan image<input type="file" id="trFile" accept="image/*" hidden></label>
+  <span style="display:flex;gap:6px;align-items:center"><input type="url" id="trUrl" placeholder="…or paste an image URL" style="height:30px;width:220px;border-radius:8px;border:1px solid #47433d;background:#33302c;color:#fff;padding:0 8px"><button class="btn" id="trUrlGo">Load</button></span>
   <div class="steps">
    <button class="btn" id="trCalib"><span class="stepn">1</span>Set scale</button>
    <span id="calibBox"><input type="number" id="calibMm" value="3200" min="1"> mm <button class="btn pri" id="calibOk">Apply</button></span>
@@ -1210,7 +1211,7 @@ function trFit(){
 function trLoad(src){
  const im = new Image();
  im.onload = () => { TR.img = im; TR.calib = []; TR.chains = []; TR.chain = []; TR.pxPerM = null; trFit(); trSetMode('calib'); };
- im.onerror = () => trStatus('That image could not be opened. Try a PNG or JPG.');
+ im.onerror = () => trStatus(/^https?:/i.test(src) ? 'That address could not be loaded as an image (the site may block it). Download the image and use Upload instead.' : 'That image could not be opened. Try a PNG or JPG.');
  im.src = src;
 }
 function trPos(e){ const r = tc.getBoundingClientRect(), dpr = tc.width / r.width; return {x:((e.clientX - r.left) * dpr - TR.ox) / TR.s, y:((e.clientY - r.top) * dpr - TR.oy) / TR.s}; }
@@ -1268,6 +1269,8 @@ function trDraw(){
 }
 $('#openTracer').onclick = () => { $('#tracer').classList.add('on'); if (!TR.img) trLoad('blueprint.jpg'); else trFit(); };
 $('#trClose').onclick = () => $('#tracer').classList.remove('on');
+$('#trUrlGo').onclick = () => { const u = $('#trUrl').value.trim(); if (!/^https?:\/\//i.test(u)) { trStatus('Paste a full image address starting with http:// or https://'); return; } trStatus('Loading image…'); trLoad(u); };
+$('#trUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.stopPropagation(); $('#trUrlGo').click(); } });
 $('#trFile').onchange = e => { const f = e.target.files[0]; if (f) trLoad(URL.createObjectURL(f)); e.target.value = ''; };
 $('#trCalib').onclick = () => { TR.calib = []; trSetMode('calib'); };
 $('#trDraw').onclick = () => { if (!TR.pxPerM) { toast('Set the scale first (step 1)'); trStatus('Set the scale first: click both ends of a known dimension.'); return; } trSetMode('draw'); };
@@ -1320,7 +1323,7 @@ renderer.setAnimationLoop(t => {
  if (selected) selHelper.setFromObject(selected);
  renderer.render(scene, camera);
 });
-window.__loft = {scene, camera, controls, state, items};
+window.__loft = {scene, camera, controls, state, get items(){ return items; }, TR, get bounds(){ return state.bounds; }, cutMeshes:() => cutMeshes};
 </script>
 <script>
  setTimeout(() => { const l = document.getElementById('loading'); if (l) l.innerHTML = 'The 3D engine could not load. Check your connection and reload the page.'; }, 15000);
